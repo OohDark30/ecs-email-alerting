@@ -1,0 +1,39 @@
+{
+  "BASE": {
+    "logging_level": "info",
+    "datastore": "sqllite",
+    "email_delivery": "sendgrid"
+  },
+  "ECS_CONNECTION": [ {
+    "protocol": "https",
+    "host": "10.246.151.131",
+    "port": "4443",
+    "user": "root",
+    "password": "ChangeMe3",
+    "datafilter": "default"
+  }],
+  "ECS_ALERT_SYMPTOM_CODES": ["2015", "1100"],
+  "SQLLITE_DATABASE_CONNECTION": {
+    "databasename": "ecsalerts"
+  },
+  "ECS_API_POLLING_INTERVALS": {
+    "ecs_collect_alert_data()": "60"
+  },
+  "SMTP": {
+    "host": "mailhost.emc.com",
+	"port": "25",
+    "user": "steve.beckwith@emc.com",
+    "password":  "Venom1234",
+    "fromemail": "steve.beckwith@emc.com",
+    "toemail": "smile1940@live.com",
+    "debuglevel": "0",
+    "polling_interval_seconds": "120"
+  },
+  "SEND_GRID": {
+    "api_key": "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",
+    "fromemail": "smile1940@live.com",
+    "toemail": "steve.beckwith@dell.com",
+    "debuglevel": "0",
+    "polling_interval_seconds": "120"
+  }
+}
