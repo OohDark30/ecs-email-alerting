@@ -285,9 +285,20 @@ def ecs_collect_alert_data(logger, ecsmanagmentapi, pollinginterval, tempdir):
 
                             # If no row found for this alert id then go ahead and add the alert
                             if row == 0:
-                                # If the symptom code of the alert is on the list of
-                                # alerts to email add it to the database otherwise ignore it.
-                                if symptom_code in _configuration.ecs_alert_symptoms_filter:
+                                process_row = False
+                                if len(_configuration.ecs_alert_symptoms_filter) == 0:
+                                    # The list of configured symtom codes to process is empty so we are doing all of them
+                                    process_row = True
+                                else:
+                                    # If the symptom code of the alert is on the list of
+                                    # alerts to email add it to the database otherwise ignore it.
+                                    if symptom_code in _configuration.ecs_alert_symptoms_filter:
+                                        process_row = True
+                                    else:
+                                        process_row = False
+
+                                # Process the row if it passes filtering logic
+                                if process_row:
                                     current_time = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
                                     alertdata = (vdc, alertid, acknowledged, description, namespace, severity,
                                                  symptom_code, timestamp, '0', '0', current_time, '', '')
@@ -402,7 +413,7 @@ def ecs_send_email_alerts(logger, configuation, smtputility, sendgridutility):
         rowcount = 0
 
         # Retrieve polling interval based on email system being used
-        if configuation.email_delivery is 'smtp':
+        if configuation.email_delivery == 'smtp':
             # SMTP email delivery is configured
             interval = configuation.smtp_alert_polling_interval
         else:
@@ -439,9 +450,10 @@ def ecs_send_email_alerts(logger, configuation, smtputility, sendgridutility):
                     rowcount += 1
 
                     # Send email based on configured email delivery system
-                    if configuation.email_delivery is 'smtp':
+                    if configuation.email_delivery == 'smtp':
                         # SMTP email delivery is configured
-                        configuation.smtp_alert_polling_interval
+
+                       smtputility.smtp_send_email(row)
                     else:
                         # SendGrid email delivery is configured
                         sendgridutility.send_grid_send_email(row)

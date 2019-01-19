@@ -9,13 +9,15 @@ then stored locally for subsequent SMTP email processing.
 We've provided two sample configuration files:
 
 - ecs_email_alert_configuration.sample: Change file suffix from .sample to .json and configure as needed
-  This contains the tool configuration for ECS, database, and SMTP connections as well as logging level, etc. 
+  This contains the tool configuration for one ore more ECS clusters to monitor, a local SQL Lite database to store extracted 
+  alerts, either SMTP or SendGrid info for email delivery, logging level, etc. 
   
   Here is the sample configuration:
   
   BASE:
   logging_level - The default is "info" but it can be set to "debug" to generate a LOT of details
-  data store - This is a placeholder for future data stores.  At the moment it's set to "influx"
+  data store - At the moment it's set to "sqllite" but could be enhanced to support other datastores
+  email_delivery - This is the email delivery system to use.  This can be either "smtp" or "sendgrid"
   
   ECS_CONNECTION:
   protocol - Should be set to "https"
@@ -27,32 +29,39 @@ We've provided two sample configuration files:
   _**Note: The ECS_CONNECTION is a list of dictionaries so multiple sets of ECS connection data can 
         be configured to support polling multiple ECS Clusters**_
   
-  INFLUX_DATABASE_CONNECTION:
-  host = This is the IP address of FQDN of the InfluxDB server
-  port - This is the port that the InfluxDB server is listening on.  Default is "8086"
-  user - This is the user id of the InfluxDB user 
-  password - This is the password of the InfluxDB user 
-  databasename - The name of the InfluxDB to connect to
+  ECS_ALERT_SYMPTOM_CODES:
+  This is a list of ECS Alert Symptom codes that will be monitored for.  ECS alerts extracted from ECS will only
+  be stored and emailed if they have a symptom code that matches one of the elements in the list.  
+  
+  _**Note: If the list is left empty the ALL alerts will be processed.**_
+  
+  SQLLITE_DATABASE_CONNECTION:
+  databasename = This is name of the SQLLite database that will be created and used for processing
   
   ECS_API_POLLING_INTERVALS
   This is a dictionary that contains the names of the ECSManagementAPI class methods that are used to perform 
   data extraction along with a numeric value that defines the polling interval in seconds to be used to call the method.
   
-  "ecs_collect_local_zone_data()": "30", 
+  "ecs_collect_alert_data()": "120", 
   
-  "ecs_collect_local_zone_replication_data()": "60",
-  
-  Currently their are 7 methods in ECSManagementAPI class.  This can also be used to determine what methods should be called i.e. data     to pull.  If for some reason a user is not interested in replication data they can remove / comment out the    
-  "ecs_collect_local_zone_replication_data()" line
+  Currently this application only supports 1 method in ECSManagementAPI class.  
   
   SMTP
-    server = This is the IP address or FQDN of the SMTP server
+    host = This is the IP address or FQDN of the SMTP server
     port - This is the port that the SMTP server is listening on.  Default is "25"
-    user - This is the user id of the SMTP user to use to connect to the server
-    password - This is the password of the SMTP user 
+    user - This is the user id of the SMTP user to use to authenticate to the SMTP server if required
+    password - This is the password of the SMTP user to authenticate to the SMTP server if required
+    authenticationrequired = This value determines if the SMTP server requires authentication. 
     fromemail - The email address that should be used as the from email when sending emails
     toemail - This is a comma seperated list of email addresses that emails should be sent to
-  
+    polling_interval_seconds - This determines how often the applicaiton will look for newly extracted alerts that need to be emailed
+
+  SEND_GRID
+    api_key = This is the SendGrid API Key to use to send emails
+    fromemail - The email address that should be used as the from email when sending emails
+    toemail - This is a comma seperated list of email addresses that emails should be sent to
+    polling_interval_seconds - This determines how often the applicaiton will look for newly extracted alerts that need to be emailed
+    
 - ecs_vdc_lookup.sample: Change file suffix from .sample to .json and configure as needed
   This contains a manual map of ip addresses to ECS VDC name.  This is a temporary setup workaround till we 
   dynamically grab the name during data collection.  This is simply a JSON dictionary of IP addresses to 

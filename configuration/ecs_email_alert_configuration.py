@@ -102,7 +102,6 @@ class ECSSmtpAlertConfiguration(object):
         self.smtp_authentication_required = parser[SMTP_CONNECTION_CONFIG]['authenticationrequired']
         self.smtp_fromemail = parser[SMTP_CONNECTION_CONFIG]['fromemail']
         self.smtp_toemail = parser[SMTP_CONNECTION_CONFIG]['toemail']
-        self.smtp_debuglevel = parser[SMTP_CONNECTION_CONFIG]['debuglevel']
         self.smtp_alert_polling_interval = parser[SMTP_CONNECTION_CONFIG]['polling_interval_seconds']
 
         # If the email delivery system is SMTP and authentication required is set then make
@@ -117,7 +116,6 @@ class ECSSmtpAlertConfiguration(object):
         self.send_grid_api_key = parser[SEND_GRID_CONFIG]['api_key']
         self.send_grid_fromemail = parser[SEND_GRID_CONFIG]['fromemail']
         self.send_grid_toemail = parser[SEND_GRID_CONFIG]['toemail']
-        self.send_grid_debuglevel = parser[SEND_GRID_CONFIG]['debuglevel']
         self.send_grid_alert_polling_interval = parser[SEND_GRID_CONFIG]['polling_interval_seconds']
 
         # ECS Alert Symptom Codes to Monitor

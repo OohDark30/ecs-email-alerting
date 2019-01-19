@@ -2,17 +2,16 @@
   "BASE": {
     "logging_level": "info",
     "datastore": "sqllite",
-    "email_delivery": "sendgrid"
+    "email_delivery": "smtp"
   },
   "ECS_CONNECTION": [ {
     "protocol": "https",
     "host": "xx.xx.xx.xx",
     "port": "4443",
     "user": "root",
-    "password": "abcdefg",
-    "datafilter": "default"
+    "password": "abcdefg"
   }],
-  "ECS_ALERT_SYMPTOM_CODES": ["2015", "1100"],
+  "ECS_ALERT_SYMPTOM_CODES": ["", ""],
   "SQLLITE_DATABASE_CONNECTION": {
     "databasename": "ecsalerts"
   },
@@ -26,7 +25,6 @@
     "password":  "<password>",
     "fromemail": "from_email_address",
     "toemail": "to_email_address",
-    "debuglevel": "0",
     "polling_interval_seconds": "120"
   },
   "SEND_GRID": {
