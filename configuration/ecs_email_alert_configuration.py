@@ -4,7 +4,6 @@ DELL EMC ECS API Data Collection Module.
 import logging
 import os
 import json
-import numbers
 
 # Constants
 MODULE_NAME = "ecs-email-alert_configuration"                 # Module Name
@@ -84,11 +83,14 @@ class ECSSmtpAlertConfiguration(object):
                 raise InvalidConfigurationException("The ECS Management protocol is not "
                                                     "configured in the module configuration")
             if not ecsconnection['host']:
-                raise InvalidConfigurationException("The ECS Management Host is not configured in the module configuration")
+                raise InvalidConfigurationException("The ECS Management Host is "
+                                                    "not configured in the module configuration")
             if not ecsconnection['port']:
-                raise InvalidConfigurationException("The ECS Management port is not configured in the module configuration")
+                raise InvalidConfigurationException("The ECS Management port is "
+                                                    "not configured in the module configuration")
             if not ecsconnection['user']:
-                raise InvalidConfigurationException("The ECS Management User is not configured in the module configuration")
+                raise InvalidConfigurationException("The ECS Management User is "
+                                                    "not configured in the module configuration")
             if not ecsconnection['password']:
                 raise InvalidConfigurationException("The ECS Management Users password is not configured "
                                                     "in the module configuration")
@@ -97,10 +99,19 @@ class ECSSmtpAlertConfiguration(object):
         self.smtp_port = parser[SMTP_CONNECTION_CONFIG]['port']
         self.smtp_user = parser[SMTP_CONNECTION_CONFIG]['user']
         self.smtp_password = parser[SMTP_CONNECTION_CONFIG]['password']
+        self.smtp_authentication_required = parser[SMTP_CONNECTION_CONFIG]['authenticationrequired']
         self.smtp_fromemail = parser[SMTP_CONNECTION_CONFIG]['fromemail']
         self.smtp_toemail = parser[SMTP_CONNECTION_CONFIG]['toemail']
         self.smtp_debuglevel = parser[SMTP_CONNECTION_CONFIG]['debuglevel']
         self.smtp_alert_polling_interval = parser[SMTP_CONNECTION_CONFIG]['polling_interval_seconds']
+
+        # If the email delivery system is SMTP and authentication required is set then make
+        # sure we have a user and password we can use
+        if self.email_delivery is 'smtp':
+            if self.smtp_authentication_required is '1':
+                if not self.smtp_user or not self.smtp_password:
+                    raise InvalidConfigurationException("The SMTP Authentication Required "
+                                                        "is set but the user or password is not set.")
 
         # SendGrid Settings
         self.send_grid_api_key = parser[SEND_GRID_CONFIG]['api_key']

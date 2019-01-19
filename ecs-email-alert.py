@@ -4,9 +4,9 @@ DELL EMC ECS Email Alerting Module.
 
 from configuration.ecs_email_alert_configuration import ECSSmtpAlertConfiguration
 from ecslogger import ecslogger
-from ecs.ecs import ECSAuthentication
-from ecs.ecs import ECSManagementAPI
-from ecs.ecs import ECSUtility
+from ecsdatacollection.ecsdatacolletion import ECSAuthentication
+from ecsdatacollection.ecsdatacolletion import ECSManagementAPI
+from ecsdatacollection.ecsdatacolletion import ECSUtility
 from ecssqllite.ecssqllite import SQLLiteUtility
 from ecssmtp.ecssmtp import ECSSMTPUtility
 from ecssendgrid.ecssendgrid import ECSSendGridUtility
@@ -28,6 +28,7 @@ MODULE_NAME = "ecs-email-alert"                             # Module Name
 INTERVAL = 30                                               # In seconds
 CONFIG_FILE = 'ecs_email_alert_configuration.json'          # Default Configuration File
 VDC_LOOKUP_FILE = 'ecs_vdc_lookup.json'                     # VDC ID Lookup File
+TOOL_VERSION = "1.0.00"                                     # Tool Version
 
 # Globals
 _configuration = None
@@ -38,7 +39,7 @@ _logger = None
 _ecsAuthentication = list()
 _sqlLiteClient = None
 _ecsVDCLookup = None
-_ecsManagmentAPI = list()
+_ecsManagementAPI = list()
 _smtpClient = None
 _smtpUtility = None
 _sendGridUtility = None
@@ -56,19 +57,19 @@ class ECSDataCollectionShutdown:
         signal.signal(signal.SIGINT, self.controlled_shutdown)
         signal.signal(signal.SIGTERM, self.controlled_shutdown)
 
-    def controlled_shutdown(self, signum, frame):
+    def controlled_shutdown(self):
         self.kill_now = True
 
 
 class ECSDataCollection (threading.Thread):
-    def __init__(self, method, sqlclient, logger, ecsmanagmentapi, pollinginterval, tempDir):
+    def __init__(self, method, sqlclient, logger, ecsmanagmentapi, pollinginterval, tempdir):
         threading.Thread.__init__(self)
         self.method = method
         self.sqlclient = sqlclient
         self.logger = logger
         self.ecsmanagmentapi = ecsmanagmentapi
         self.pollinginterval = pollinginterval
-        self.tempDir = tempDir
+        self.tempdir = tempdir
 
         logger.info(MODULE_NAME + '::ECSDataCollection()::init method of class called')
 
@@ -77,7 +78,7 @@ class ECSDataCollection (threading.Thread):
             self.logger.info(MODULE_NAME + '::ECSDataCollection()::Starting thread with method: ' + self.method)
 
             if self.method == 'ecs_collect_alert_data()':
-                ecs_collect_alert_data(self.logger, self.ecsmanagmentapi, self.pollinginterval, self.tempDir)
+                ecs_collect_alert_data(self.logger, self.ecsmanagmentapi, self.pollinginterval, self.tempdir)
             else:
                 self.logger.info(MODULE_NAME + '::ECSDataCollection()::Requested method '
                                  + self.method + ' is not supported.')
@@ -87,13 +88,13 @@ class ECSDataCollection (threading.Thread):
 
 
 class ECSEmailAlerting (threading.Thread):
-    def __init__(self, method, logger, configuration, smtpUtility, sendGridUtility):
+    def __init__(self, method, logger, configuration, smtputility, sendgridutility):
         threading.Thread.__init__(self)
         self.method = method
         self.logger = logger
         self.configuration = configuration
-        self.smtpUtility = smtpUtility
-        self.sendGridUtility = sendGridUtility
+        self.smtpUtility = smtputility
+        self.sendGridUtility = sendgridutility
 
         logger.info(MODULE_NAME + '::ECSSmtpAlerting()::init method of class called')
 
@@ -138,7 +139,7 @@ def ecs_authenticate():
     global _ecsAuthentication
     global _configuration
     global _logger
-    global _ecsManagmentAPI
+    global _ecsManagementAPI
     connected = True
 
     try:
@@ -156,15 +157,15 @@ def ecs_authenticate():
 
             # Check to see if we have a token returned
             if auth.token is None:
-                _logger.error(MODULE_NAME + '::ecs_init()::Unable to authenticate to ECS as configured.  '
-                             'Please validate and try again.')
+                _logger.error(MODULE_NAME + '::ecs_init()::Unable to authenticate to ECS '
+                                            'as configured.  Please validate and try again.')
                 connected = False
                 break
             else:
                 _ecsAuthentication.append(auth)
 
                 # Instantiate ECS Management API object, and it to our list, and validate that we are authenticated
-                _ecsManagmentAPI.append(ECSManagementAPI(auth, _logger))
+                _ecsManagementAPI.append(ECSManagementAPI(auth, _logger))
                 if not _ecsAuthentication:
                     _logger.info(MODULE_NAME + '::ecs_authenticate()::ECS Data Collection '
                                                'Module is not ready.  Please check logs.')
@@ -274,7 +275,7 @@ def ecs_collect_alert_data(logger, ecsmanagmentapi, pollinginterval, tempdir):
                             description = alert.find('description').text
                             namespace = alert.find('namespace').text
                             severity = alert.find('severity').text
-                            symptomCode = alert.find('symptomCode').text
+                            symptom_code = alert.find('symptomCode').text
                             timestamp = alert.find('timestamp').text
 
                             # Check if alert already exists
@@ -286,10 +287,10 @@ def ecs_collect_alert_data(logger, ecsmanagmentapi, pollinginterval, tempdir):
                             if row == 0:
                                 # If the symptom code of the alert is on the list of
                                 # alerts to email add it to the database otherwise ignore it.
-                                if symptomCode in _configuration.ecs_alert_symptoms_filter:
+                                if symptom_code in _configuration.ecs_alert_symptoms_filter:
                                     current_time = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
                                     alertdata = (vdc, alertid, acknowledged, description, namespace, severity,
-                                                 symptomCode, timestamp, '0', '0', current_time, '', '')
+                                                 symptom_code, timestamp, '0', '0', current_time, '', '')
                                     sql = ''' INSERT INTO ecsalerts(vdc, alertId, acknowledged, description, namespace, severity, symptomCode, alertTimestamp, emailAlerted, alertCleared, dateCreated, dateEmailed, dateCleared) VALUES(?, ?,?,?,?,?,?, ?, ?, ?, ?, ?, ?) '''
                                     cur.execute(sql, alertdata)
                                     sql_database.commit()
@@ -345,7 +346,7 @@ def list_alert_table(sqllite_db):
 
     except Exception as e:
         _logger.error(MODULE_NAME + '::list_alert_table()::The following '
-                          'unhandled exception occurred: ' + e.message)
+                                    'unhandled exception occurred: ' + e.message)
         return None
 
 
@@ -367,7 +368,7 @@ def clear_alert_table(sqllite_db):
 
     except Exception as e:
         _logger.error(MODULE_NAME + '::clear_alert_table()::The following '
-                          'unhandled exception occurred: ' + e.message)
+                                    'unhandled exception occurred: ' + e.message)
         return False
 
 
@@ -376,7 +377,8 @@ def list_sent_alerts_table(sqllite_db):
     Query the extracted alerts database for alerts that have been sent via SMTP and provide it in JSON
     """
     try:
-        _logger.info(MODULE_NAME + '::list_sent_alerts_table::About to list all extracted alerts in the database that have had email alerts sent.')
+        _logger.info(MODULE_NAME + '::list_sent_alerts_table::About to list all '
+                                   'extracted alerts in the database that have had email alerts sent.')
 
         # Select sent records in the extracted alerts table
         ecsalertsselect = """ SELECT * FROM ecsalerts WHERE emailAlerted = 1; """
@@ -390,11 +392,11 @@ def list_sent_alerts_table(sqllite_db):
 
     except Exception as e:
         _logger.error(MODULE_NAME + '::list_sent_alerts_table()::The following '
-                          'unhandled exception occurred: ' + e.message)
+                                    'unhandled exception occurred: ' + e.message)
         return None
 
 
-def ecs_send_email_alerts(logger, configuation, smtpUtility, sendgridUtility):
+def ecs_send_email_alerts(logger, configuation, smtputility, sendgridutility):
 
     try:
         rowcount = 0
@@ -439,16 +441,16 @@ def ecs_send_email_alerts(logger, configuation, smtpUtility, sendgridUtility):
                     # Send email based on configured email delivery system
                     if configuation.email_delivery is 'smtp':
                         # SMTP email delivery is configured
-                        email_sent = configuation.smtp_alert_polling_interval
+                        configuation.smtp_alert_polling_interval
                     else:
                         # SendGrid email delivery is configured
-                        email_sent = sendgridUtility.send_grid_send_email(row)
+                        sendgridutility.send_grid_send_email(row)
 
                     # Update state on row
                     current_time = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-                    rowId = row[0]
+                    row_id = row[0]
                     ecsalertupdate = """ UPDATE ecsalerts SET emailAlerted = 1, dateEmailed = ? WHERE id = ?; """
-                    cur.execute(ecsalertupdate, (current_time, rowId,))
+                    cur.execute(ecsalertupdate, (current_time, row_id,))
                     sql_database.commit()
 
                     # Increment sent email count
@@ -479,7 +481,7 @@ def ecs_send_email_alerts(logger, configuation, smtpUtility, sendgridUtility):
 def ecs_data_collection():
     global _ecsAuthentication
     global _logger
-    global _ecsManagmentAPI
+    global _ecsManagementAPI
     global _sqlLiteClient
     global _smtpClient
 
@@ -493,7 +495,7 @@ def ecs_data_collection():
         for i, j in _configuration.modules_intervals.items():
             method = str(i)
             interval = str(j)
-            t = ECSDataCollection(method, _sqlLiteClient, _logger, _ecsManagmentAPI, interval,
+            t = ECSDataCollection(method, _sqlLiteClient, _logger, _ecsManagementAPI, interval,
                                   _configuration.tempfilepath)
             t.start()
 
@@ -563,7 +565,8 @@ if __name__ == "__main__":
                 if args.clear:
                     print('ECS Email Alerting')
                     # Let's make sure they really want to clear that table
-                    data = input("Your about to clear all records in the alert extraction database table.  Are you sure?")
+                    data = input("Your about to clear all records in the "
+                                 "alert extraction database table.  Are you sure?")
 
                     if data.capitalize() is 'YES':
                         clear_alert_table(_sqlLiteClient)
