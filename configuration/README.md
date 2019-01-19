@@ -1,14 +1,14 @@
-# ecs-smtp-alerting configuration
+# ecs-email-alerting configuration
 ----------------------------------------------------------------------------------------------
-ecs-smtp-alerting is a PYTHON based script that monitors for alerts from DELL EMC's 
+ecs-email-alerting is a PYTHON based script that monitors for alerts from DELL EMC's 
 Elastic Cloud Storage (ECS) Product and sends emails via SMTP with alert information
 
-ecs-smtp-alerting utilizes the ECS Managment REST API's to gather alert data from ECS which is 
+ecs-email-alerting utilizes the ECS Managment REST API's to gather alert data from ECS which is 
 then stored locally for subsequent SMTP email processing.
 
 We've provided two sample configuration files:
 
-- ecs_smtp_alert_configuration.sample: Change file suffix from .sample to .json and configure as needed
+- ecs_email_alert_configuration.sample: Change file suffix from .sample to .json and configure as needed
   This contains the tool configuration for ECS, database, and SMTP connections as well as logging level, etc. 
   
   Here is the sample configuration:
