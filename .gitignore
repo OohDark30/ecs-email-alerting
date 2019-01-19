@@ -108,3 +108,4 @@ venv.bak/
 
 # Test Configuration files
 ecs_email_alert_configuration.json
+ecs_vdc_lookup.json
