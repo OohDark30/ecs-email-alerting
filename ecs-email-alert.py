@@ -3,11 +3,11 @@ DELL EMC ECS Email Alerting Module.
 """
 
 from configuration.ecs_email_alert_configuration import ECSSmtpAlertConfiguration
-from logger import ecs_logger
+from ecslogger import ecslogger
 from ecs.ecs import ECSAuthentication
 from ecs.ecs import ECSManagementAPI
 from ecs.ecs import ECSUtility
-from sqllite.sqllite import SQLLiteUtility
+from ecssqllite.ecssqllite import SQLLiteUtility
 from ecssmtp.ecssmtp import ECSSMTPUtility
 from ecssendgrid.ecssendgrid import ECSSendGridUtility
 import sqlite3
@@ -125,7 +125,7 @@ def ecs_config(config, vdc_config, temp_dir):
         _ecsVDCLookup = ECSUtility(_ecsAuthentication, _logger, vdc_config)
 
         # Grab loggers and log status
-        _logger = ecs_logger.get_logger(__name__, _configuration.logging_level)
+        _logger = ecslogger.get_logger(__name__, _configuration.logging_level)
         _logger.info(MODULE_NAME + '::ecs_config()::We have configured logging level to: '
                      + logging.getLevelName(str(_configuration.logging_level)))
         _logger.info(MODULE_NAME + '::ecs_config()::Configuring ECS Data Collection Module complete.')
