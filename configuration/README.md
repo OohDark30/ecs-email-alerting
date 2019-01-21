@@ -8,6 +8,8 @@ then stored locally for subsequent SMTP email processing.
 
 We've provided two sample configuration files:
 
+NOTE: These files are in JSON format so make sure you understand JSON syntax.
+
 - ecs_email_alert_configuration.sample: Change file suffix from .sample to .json and configure as needed
   This contains the tool configuration for one ore more ECS clusters to monitor, a local SQL Lite database to store extracted 
   alerts, either SMTP or SendGrid info for email delivery, logging level, etc. 
