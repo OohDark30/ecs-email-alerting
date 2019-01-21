@@ -407,6 +407,30 @@ def list_sent_alerts_table(sqllite_db):
         return None
 
 
+def list_unsent_alerts_table(sqllite_db):
+    """
+    Query the extracted alerts database for alerts that have NOT been sent via SMTP and provide it in JSON
+    """
+    try:
+        _logger.info(MODULE_NAME + '::list_unsent_alerts_table::About to list all '
+                                   'extracted alerts in the database that have NOT had email alerts sent.')
+
+        # Select sent records in the extracted alerts table
+        ecsalertsselect = """ SELECT * FROM ecsalerts WHERE emailAlerted = 0; """
+
+        cur = sqllite_db.cursor()
+        cur.execute(ecsalertsselect)
+        r = [dict((cur.description[i][0], value) \
+                  for i, value in enumerate(row)) for row in cur.fetchall()]
+        cur.connection.close()
+        return r if r else None
+
+    except Exception as e:
+        _logger.error(MODULE_NAME + '::list_unsent_alerts_table()::The following '
+                                    'unhandled exception occurred: ' + e.message)
+        return None
+
+
 def ecs_send_email_alerts(logger, configuation, smtputility, sendgridutility):
 
     try:
@@ -534,6 +558,9 @@ if __name__ == "__main__":
         parser.add_argument("-e", "--extracted", help="List all records in the extracted alerts database table.", action="store_true")
         parser.add_argument("-s", "--sent", help="List records in the extracted "
                                                  "alerts database table that have been emailed.", action="store_true")
+        parser.add_argument("-u", "--unsent", help="List records in the extracted "
+                                                   "alerts database table that have NOT "
+                                                   "been emailed.", action="store_true")
         args = parser.parse_args()
 
         # Dump out application path and setup application directories
@@ -588,35 +615,40 @@ if __name__ == "__main__":
                         if sentAlertsJson:
                             print(json.dumps(sentAlertsJson, indent=4, separators=(',', ': '), sort_keys=True))
                     else:
-                        continue_processing = False
-
-                        # Now lets initialize the email delivery system
-                        if _configuration.email_delivery == 'smtp':
-                            _smtpUtility = ECSSMTPUtility(_configuration, _logger)
-                            continue_processing = _smtpUtility.check_smtp_server_connection()
+                        if args.unsent:
+                            unsentAlertsJson = list_unsent_alerts_table(_sqlLiteClient)
+                            if unsentAlertsJson:
+                                print(json.dumps(unsentAlertsJson, indent=4, separators=(',', ': '), sort_keys=True))
                         else:
-                            _sendGridUtility = ECSSendGridUtility(_configuration, _logger)
-                            continue_processing = _sendGridUtility.check_send_grid_access()
+                            continue_processing = False
 
-                        # If we were able to initialize our email delivery system then continue
-                        if continue_processing:
-                            # Perform normal alert monitoring processing
+                            # Now lets initialize the email delivery system
+                            if _configuration.email_delivery == 'smtp':
+                                _smtpUtility = ECSSMTPUtility(_configuration, _logger)
+                                continue_processing = _smtpUtility.check_smtp_server_connection()
+                            else:
+                                _sendGridUtility = ECSSendGridUtility(_configuration, _logger)
+                                continue_processing = _sendGridUtility.check_send_grid_access()
 
-                            # Close SqlLite connection object so the data collection threads can each create their own
-                            _sqlLiteClient.close()
+                            # If we were able to initialize our email delivery system then continue
+                            if continue_processing:
+                                # Perform normal alert monitoring processing
 
-                            # Create object to support controlled shutdown
-                            controlledShutdown = ECSDataCollectionShutdown()
+                                # Close SqlLite connection object so the data collection threads can each create their own
+                                _sqlLiteClient.close()
 
-                            # Initialize connection to ECS(s)
-                            if ecs_authenticate():
+                                # Create object to support controlled shutdown
+                                controlledShutdown = ECSDataCollectionShutdown()
 
-                                # Launch ECS Data Collection polling threads
-                                ecs_data_collection()
+                                # Initialize connection to ECS(s)
+                                if ecs_authenticate():
 
-                                # Check for shutdown
-                                if controlledShutdown.kill_now:
-                                    print(MODULE_NAME + "__main__::Controlled shutdown completed.")
+                                    # Launch ECS Data Collection polling threads
+                                    ecs_data_collection()
+
+                                    # Check for shutdown
+                                    if controlledShutdown.kill_now:
+                                        print(MODULE_NAME + "__main__::Controlled shutdown completed.")
 
     except Exception as e:
         print(MODULE_NAME + '__main__::The following unexpected error occurred: '
