@@ -10,6 +10,7 @@ from ecsdatacollection.ecsdatacolletion import ECSUtility
 from ecssqllite.ecssqllite import SQLLiteUtility
 from ecssmtp.ecssmtp import ECSSMTPUtility
 from ecssendgrid.ecssendgrid import ECSSendGridUtility
+from ecsslack.ecsslack import ECSSlackUtility
 import sqlite3
 import argparse
 import datetime
@@ -39,10 +40,11 @@ _logger = None
 _ecsAuthentication = list()
 _sqlLiteClient = None
 _ecsVDCLookup = None
-_ecsManagementAPI = list()
+_ecsManagementAPI = {}
 _smtpClient = None
 _smtpUtility = None
 _sendGridUtility = None
+_slackUtility = None
 
 """
 Class to listen for signal termination for controlled shutdown
@@ -88,27 +90,28 @@ class ECSDataCollection (threading.Thread):
 
 
 class ECSEmailAlerting (threading.Thread):
-    def __init__(self, method, logger, configuration, smtputility, sendgridutility):
+    def __init__(self, method, logger, configuration, smtputility, sendgridutility, slackutility):
         threading.Thread.__init__(self)
         self.method = method
         self.logger = logger
         self.configuration = configuration
         self.smtpUtility = smtputility
         self.sendGridUtility = sendgridutility
+        self.slackUtility = slackutility
 
-        logger.info(MODULE_NAME + '::ECSSmtpAlerting()::init method of class called')
+        logger.info(MODULE_NAME + '::ECSEmailAlerting()::init method of class called')
 
     def run(self):
         try:
-            self.logger.info(MODULE_NAME + '::ECSSmtpAlerting()::Starting thread with method: ' + self.method)
+            self.logger.info(MODULE_NAME + '::ECSEmailAlerting()::Starting thread with method: ' + self.method)
 
             if self.method == 'ecs_send_email_alerts()':
-                ecs_send_email_alerts(self.logger, self.configuration, self.smtpUtility, self.sendGridUtility)
+                ecs_send_email_alerts(self.logger, self.configuration, self.smtpUtility, self.sendGridUtility, self.slackUtility )
             else:
-                self.logger.info(MODULE_NAME + '::ECSSmtpAlerting()::Requested method '
+                self.logger.info(MODULE_NAME + '::ECSEmailAlerting()::Requested method '
                                  + self.method + ' is not supported.')
         except Exception as e:
-            _logger.error(MODULE_NAME + 'ECSSmtpAlerting::run()::The following unexpected '
+            _logger.error(MODULE_NAME + 'ECSEmailAlerting::run()::The following unexpected '
                                         'exception occurred: ' + str(e) + "\n" + traceback.format_exc())
 
 
@@ -165,7 +168,7 @@ def ecs_authenticate():
                 _ecsAuthentication.append(auth)
 
                 # Instantiate ECS Management API object, and it to our list, and validate that we are authenticated
-                _ecsManagementAPI.append(ECSManagementAPI(auth, _logger))
+                _ecsManagementAPI[ecsconnection['host']] = ECSManagementAPI(auth, _logger)
                 if not _ecsAuthentication:
                     _logger.info(MODULE_NAME + '::ecs_authenticate()::ECS Data Collection '
                                                'Module is not ready.  Please check logs.')
@@ -209,6 +212,7 @@ def sqllite_init():
             ecsalertstable = """ CREATE TABLE IF NOT EXISTS ecsalerts (
                                         id integer PRIMARY KEY,
                                         vdc text NOT NULL,
+                                        managementIp text NOT NULL,
                                         alertId text NOT NULL,
                                         acknowledged text NOT NULL,
                                         description text NOT NULL,
@@ -241,87 +245,125 @@ def ecs_collect_alert_data(logger, ecsmanagmentapi, pollinginterval, tempdir):
         # Start polling loop
         while True:
             # Perform API call against each configured ECS
-            for ecsconnection in ecsmanagmentapi:
+            for key in ecsmanagmentapi:
 
-                # Retrieve current alert data via API
-                alert_data_file = ecsconnection.ecs_collect_alert_data(tempdir)
+                # Grab object
+                ecsconnection = ecsmanagmentapi[key]
+                # Reset marker
+                next_marker = None
 
-                if alert_data_file is None:
-                    logger.info(MODULE_NAME + '::ecs_collect_alert_data()::'
-                                              'Unable to retrieve ECS Dashboard Alert Information')
-                    return
-                else:
-                    """
-                    We have an XML File lets parse it
-                    """
-                    try:
-                        tree = ET.parse(alert_data_file)
-                        root = tree.getroot()
+                # Reset new alerts counter
+                new_alerts = 0
 
-                        # Reset new alerts counter
-                        new_alerts = 0
+                while True:
+                    # Retrieve current alert data via API for current VDC.  This may be
+                    # called multiple times to iterate thru all alerts depending on # of alerts
+                    alert_data_file = ecsconnection.ecs_collect_alert_data(tempdir, next_marker)
 
-                        # Create a connection to the database
-                        db_utility = SQLLiteUtility(_configuration, _logger)
-                        sql_database = db_utility.open_sqllite_db(_configuration.database_name)
+                    if alert_data_file is None:
+                        logger.info(MODULE_NAME + '::ecs_collect_alert_data()::'
+                                                  'Unable to retrieve ECS Dashboard Alert Information')
+                        return
+                    else:
+                        """
+                        We have an XML File lets parse it
+                        """
+                        try:
+                            tree = ET.parse(alert_data_file)
+                            root = tree.getroot()
 
-                        # Grab VDC Name
-                        vdc = _ecsVDCLookup.vdc_json[ecsconnection.authentication.host]
+                            # Create a connection to the database
+                            db_utility = SQLLiteUtility(_configuration, _logger)
+                            sql_database = db_utility.open_sqllite_db(_configuration.database_name)
 
-                        # For each alert check if we already have it and if not add it
-                        for alert in root.findall('alert'):
-                            alertid = alert.find('id').text
-                            acknowledged = alert.find('acknowledged').text
-                            description = alert.find('description').text
-                            namespace = alert.find('namespace').text
-                            severity = alert.find('severity').text
-                            symptom_code = alert.find('symptomCode').text
-                            timestamp = alert.find('timestamp').text
+                            # Grab VDC Name
+                            vdc = _ecsVDCLookup.vdc_json[ecsconnection.authentication.host]
+                            managementIp = ecsconnection.authentication.host
 
-                            # Check if alert already exists
-                            cur = sql_database.cursor()
-                            cur.execute("SELECT count(*) FROM ecsalerts WHERE alertId =?", (alertid,))
-                            row = cur.fetchone()[0]
+                            # Grab next marker information
+                            nm = root.find('NextMarker')
+                            if nm is None:
+                                next_marker = None
+                            else:
+                                next_marker = nm.text
 
-                            # If no row found for this alert id then go ahead and add the alert
-                            if row == 0:
-                                process_row = False
-                                if len(_configuration.ecs_alert_symptoms_filter) == 0:
-                                    # The list of configured symtom codes to process is empty so we are doing all of them
-                                    process_row = True
-                                else:
-                                    # If the symptom code of the alert is on the list of
-                                    # alerts to email add it to the database otherwise ignore it.
-                                    if symptom_code in _configuration.ecs_alert_symptoms_filter:
+                            # For each alert check if we already have it and if not add it
+                            for alert in root.findall('alert'):
+                                alertid = alert.find('id').text
+                                acknowledged = alert.find('acknowledged').text
+                                description = alert.find('description').text
+                                namespace = alert.find('namespace').text
+                                severity = alert.find('severity').text
+                                symptom_code = alert.find('symptomCode').text
+                                timestamp = alert.find('timestamp').text
+
+                                # Check if alert already exists
+                                cur = sql_database.cursor()
+                                cur.execute("SELECT count(*) FROM ecsalerts WHERE alertId =?", (alertid,))
+                                row = cur.fetchone()[0]
+
+                                # If no row found for this alert id then go ahead and add the alert
+                                if row == 0:
+                                    process_row = False
+
+                                    # Apply filtering based on severity first
+                                    if len(_configuration.ecs_alert_severity_filter) == 0:
+                                        # The list of configured severity codes to process
+                                        # is empty we are doing all of them
                                         process_row = True
                                     else:
-                                        process_row = False
+                                        # We have severity codes to filter.  Check if the severity code
+                                        # of the alert is in the list severity codes to processs.
+                                        if severity in _configuration.ecs_alert_severity_filter:
+                                            process_row = True
+                                        else:
+                                            process_row = False
 
-                                # Process the row if it passes filtering logic
-                                if process_row:
-                                    current_time = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
-                                    alertdata = (vdc, alertid, acknowledged, description, namespace, severity,
-                                                 symptom_code, timestamp, '0', '0', current_time, '', '')
-                                    sql = ''' INSERT INTO ecsalerts(vdc, alertId, acknowledged, description, namespace, severity, symptomCode, alertTimestamp, emailAlerted, alertCleared, dateCreated, dateEmailed, dateCleared) VALUES(?, ?,?,?,?,?,?, ?, ?, ?, ?, ?, ?) '''
-                                    cur.execute(sql, alertdata)
-                                    sql_database.commit()
-                                    new_alerts += 1
+                                    # If the alert passed severity filtering now apply filtering based on symptom codes.
+                                    if process_row:
+                                        if len(_configuration.ecs_alert_symptoms_filter) == 0:
+                                            # The list of configured symtom codes to process
+                                            # is empty so we are doing all of them
+                                            process_row = True
+                                        else:
+                                            # If the symptom code of the alert is on the list of
+                                            # alerts to email add it to the database otherwise ignore it.
+                                            if symptom_code in _configuration.ecs_alert_symptoms_filter:
+                                                process_row = True
+                                            else:
+                                                process_row = False
 
-                        # No need to close the file as the ET parse() method will close it when parsing is completed.
+                                    # Process the row if it passes all filtering logic
+                                    if process_row:
+                                        current_time = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+                                        alertdata = (vdc, managementIp, alertid, acknowledged, description, namespace, severity,
+                                                     symptom_code, timestamp, '0', '0', current_time, '', '')
+                                        sql = ''' INSERT INTO ecsalerts(vdc, managementIp, alertId, acknowledged, description, namespace, severity, symptomCode, alertTimestamp, emailAlerted, alertCleared, dateCreated, dateEmailed, dateCleared) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) '''
+                                        cur.execute(sql, alertdata)
+                                        sql_database.commit()
+                                        new_alerts += 1
 
-                        # Close the database connection when we have processed all eligible records
-                        sql_database.close()
+                            # No need to close the file as the ET parse()
+                            # method will close it when parsing is completed.
 
-                        _logger.info(MODULE_NAME + '::ecs_collect_alert_data::Discovered ' + str(new_alerts) +
-                                     ' new alerts that were in our symptom code '
-                                     'filter and added them to the extracted alerts database.')
+                            # Close the database connection when we have processed all eligible records
+                            sql_database.close()
 
-                        _logger.debug(MODULE_NAME + '::ecs_collect_alert_data::Deleting temporary '
-                                                    'json file: ' + alert_data_file )
+                            _logger.debug(MODULE_NAME + '::ecs_collect_alert_data::Deleting temporary '
+                                                        'json file: ' + alert_data_file )
 
-                    except Exception as ex:
-                        logger.error(MODULE_NAME + '::ecs_collect_alert_data()::The following unexpected '
-                                                   'exception occurred: ' + str(ex) + "\n" + traceback.format_exc())
+                        except Exception as ex:
+                            logger.error(MODULE_NAME + '::ecs_collect_alert_data()::The following unexpected '
+                                                       'exception occurred: ' + str(ex) + "\n" + traceback.format_exc())
+
+                    # Check to see if the marker is empty
+                    if next_marker is None:
+                        break
+
+                # Log stats line
+                _logger.info(MODULE_NAME + '::ecs_collect_alert_data::Discovered ' + str(new_alerts) +
+                             ' new alerts on VDC ' + vdc + ' that passed severity and symptom code '
+                                                           'filtering.')
 
             if controlledShutdown.kill_now:
                 logger.info(MODULE_NAME + '::ecs_collect_alert_data()::Shutdown detected.  Terminating polling.')
@@ -431,18 +473,25 @@ def list_unsent_alerts_table(sqllite_db):
         return None
 
 
-def ecs_send_email_alerts(logger, configuation, smtputility, sendgridutility):
+def ecs_send_email_alerts(logger, configuation, smtputility, sendgridutility, slackutility):
+
+    # Locals
+    global _ecsManagementAPI
 
     try:
         rowcount = 0
 
         # Retrieve polling interval based on email system being used
-        if configuation.email_delivery == 'smtp':
+        if configuation.alert_delivery == 'smtp':
             # SMTP email delivery is configured
             interval = configuation.smtp_alert_polling_interval
         else:
-            # SendGrid email delivery is configured
-            interval = configuation.send_grid_alert_polling_interval
+            if configuation.alert_delivery == 'sendgrid':
+                # SendGrid email delivery is configured
+                interval = configuation.send_grid_alert_polling_interval
+            else:
+                # Slack message deliver
+                interval = configuation.slack_alert_polling_interval
 
         # Start polling loop
         while True:
@@ -474,17 +523,21 @@ def ecs_send_email_alerts(logger, configuation, smtputility, sendgridutility):
                     rowcount += 1
 
                     # Send email based on configured email delivery system
-                    if configuation.email_delivery == 'smtp':
+                    if configuation.alert_delivery == 'smtp':
                         # SMTP email delivery is configured
-
-                       smtputility.smtp_send_email(row)
+                        smtputility.smtp_send_email(row)
                     else:
-                        # SendGrid email delivery is configured
-                        sendgridutility.send_grid_send_email(row)
+                        if configuation.alert_delivery == 'sendgrid':
+                            # SendGrid email delivery is configured
+                            sendgridutility.send_grid_send_email(row)
+                        else:
+                            slackutility.slack_send_message(row)
 
-                    # Update state on row
+                    # Update notification alert sent state on row
                     current_time = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
                     row_id = row[0]
+                    alert_id = row[3]
+                    managementIp = row[2]
                     ecsalertupdate = """ UPDATE ecsalerts SET emailAlerted = 1, dateEmailed = ? WHERE id = ?; """
                     cur.execute(ecsalertupdate, (current_time, row_id,))
                     sql_database.commit()
@@ -492,11 +545,22 @@ def ecs_send_email_alerts(logger, configuation, smtputility, sendgridutility):
                     # Increment sent email count
                     sent_emails += 1
 
+                    # If we are acknowledging alerts after notification make the API call
+                    if str(configuation.acknowledge_alerts).upper() == 'YES':
+                        _ecsManagementAPI[managementIp].ecs_acknowledge_alert(alert_id)
+
+                        # Update alert acknowledge date
+                        current_time2 = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
+                        row_id = row[0]
+                        ecsalertupdate2 = """ UPDATE ecsalerts SET alertCleared = 1, dateCleared = ? WHERE id = ?; """
+                        cur.execute(ecsalertupdate2, (current_time2, row_id,))
+                        sql_database.commit()
+
                 # Close the database connection when we have processed all eligible records
                 sql_database.close()
 
                 _logger.info(MODULE_NAME + '::ecs_send_email_alerts::Processed ' + str(sent_emails) +
-                             ' new alerts and sent emails.')
+                             ' new alerts and sent notifications.')
 
             except Exception as e:
                 _logger.error(MODULE_NAME + '::ecs_send_email_alerts()::The following '
@@ -536,7 +600,7 @@ def ecs_data_collection():
             t.start()
 
         # Finally, spin up a thread to monitor the alerts table for alerts that have not been sent via SMTP
-        t2 = ECSEmailAlerting('ecs_send_email_alerts()', _logger, _configuration, _smtpUtility, _sendGridUtility)
+        t2 = ECSEmailAlerting('ecs_send_email_alerts()', _logger, _configuration, _smtpUtility, _sendGridUtility, _slackUtility)
         t2.start()
 
     except Exception as e:
@@ -622,19 +686,24 @@ if __name__ == "__main__":
                         else:
                             continue_processing = False
 
-                            # Now lets initialize the email delivery system
-                            if _configuration.email_delivery == 'smtp':
+                            # Now lets initialize the alert delivery system
+                            if _configuration.alert_delivery == 'smtp':
                                 _smtpUtility = ECSSMTPUtility(_configuration, _logger)
                                 continue_processing = _smtpUtility.check_smtp_server_connection()
                             else:
-                                _sendGridUtility = ECSSendGridUtility(_configuration, _logger)
-                                continue_processing = _sendGridUtility.check_send_grid_access()
+                                if _configuration.alert_delivery == 'sendgrid':
+                                    _sendGridUtility = ECSSendGridUtility(_configuration, _logger)
+                                    continue_processing = _sendGridUtility.check_send_grid_access()
+                                else:
+                                    _slackUtility = ECSSlackUtility(_configuration, _logger)
+                                    continue_processing = True
 
                             # If we were able to initialize our email delivery system then continue
                             if continue_processing:
                                 # Perform normal alert monitoring processing
 
-                                # Close SqlLite connection object so the data collection threads can each create their own
+                                # Close SqlLite connection object so the data
+                                # collection threads can each create their own
                                 _sqlLiteClient.close()
 
                                 # Create object to support controlled shutdown

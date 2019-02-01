@@ -31,9 +31,15 @@ NOTE: These files are in JSON format so make sure you understand JSON syntax.
   _**Note: The ECS_CONNECTION is a list of dictionaries so multiple sets of ECS connection data can 
         be configured to support polling multiple ECS Clusters**_
   
+  ECS_ALERT_SEVERITY_FILTER
+  This is a list of ECS Alert Severity codes that will be monitored for.  ECS alerts extracted from ECS will only
+  be stored and emailed if they have a severity code that matches one of the elements in the list.  Valid values 
+  are INFO, WARNING, ERROR, and CRITICAL
+    
   ECS_ALERT_SYMPTOM_CODES:
   This is a list of ECS Alert Symptom codes that will be monitored for.  ECS alerts extracted from ECS will only
-  be stored and emailed if they have a symptom code that matches one of the elements in the list.  
+  be stored and emailed if they have a symptom code that matches one of the elements in the list.  Note: This is applied 
+  after severity code filtering and only if the alert passed.
   
   _**Note: If the list is left empty the ALL alerts will be processed.**_
   

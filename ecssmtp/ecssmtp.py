@@ -58,13 +58,12 @@ class ECSSMTPUtility(object):
                 time.sleep(1)
 
             # Grab values from row parameter
-            id = row[0]
             vdc = row[1]
-            alertid = row[2]
-            description = row[4]
-            severity = row[6]
-            symtomcode = row[7]
-            timestamp = row[8]
+            management_ip = row[2]
+            description = row[5]
+            severity = row[7]
+            symtomcode = row[8]
+            timestamp = row[9]
 
             # Setup message object
             msg = email.message.Message()
@@ -79,7 +78,10 @@ class ECSSMTPUtility(object):
                 if severity == 'ERROR':
                     severity_text = """<font color="red">""" + severity + "</font>"
                 else:
-                    severity_text = """<font color="black">""" + severity + "</font>"
+                    if severity == 'CRITICAL':
+                        severity_text = """<font color="red">""" + severity + "</font>"
+                    else:
+                        severity_text = """<font color="black">""" + severity + "</font>"
 
             # Set email HTML content
             email_content = """
@@ -89,15 +91,16 @@ class ECSSMTPUtility(object):
                <title>Elastic Cloud Storage (ECS) Alert Received</title>
             </head> 
             <html><body><h1>Elastic Cloud Storage (ECS) Received Alert from Virtual Data Center: {0} </h1><br>
-            Severity: {1} <br>
-            Symptom Code : {2} <br>
-            Description : {3}<br>
-            Timestamp : {4} <br>
+            Management IP: {1} <br>
+            Severity: {2} <br>
+            Symptom Code : {3} <br>
+            Description : {4}<br>
+            Timestamp : {5} <br>
             </body></html>"""
 
             # Format message
             msg.add_header('Content-Type', 'text/html')
-            msg.set_payload(email_content.format(vdc, severity_text, symtomcode, description, timestamp))
+            msg.set_payload(email_content.format(vdc, management_ip, severity_text, symtomcode, description, timestamp))
 
             # Connect to server and send email
             s = smtplib.SMTP(self.config.smtp_host + ':' + self.config.smtp_port)

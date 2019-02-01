@@ -58,11 +58,11 @@ class ECSAuthentication(object):
 
         self.logger.info('ECSAuthentication::connect()::login call to ECS returned with status code: ' + str(r.status_code))
         if r.status_code == requests.codes.ok:
-            self.logger.info('ECSAuthentication::connect()::login call returned with a 200 status code.  '
+            self.logger.debug('ECSAuthentication::connect()::login call returned with a 200 status code.  '
                               'X-SDS-AUTH-TOKEN Header contains: ' + r.headers['X-SDS-AUTH-TOKEN'])
             self.token = r.headers['X-SDS-AUTH-TOKEN']
         else:
-            self.logger.info('ECSManagementAPI::connect()::login call '
+            self.logger.error('ECSManagementAPI::connect()::login call '
                              'failed with a status code of ' + str(r.status_code))
             self.token = None
 
@@ -80,17 +80,26 @@ class ECSManagementAPI(object):
         self.logger = logger
         self.response_xml_file = None
 
-    def ecs_collect_alert_data(self, tempdir):
+    def ecs_collect_alert_data(self, tempdir, marker):
 
         while True:
             # Perform ECS Dashboard Alert API Call
-            headers = {'X-SDS-AUTH-TOKEN': "'{0}'".format(self.authentication.token), 'content-type': 'application/json'}
+            headers = {'X-SDS-AUTH-TOKEN': "'{0}'".format(self.authentication.token),
+                       'content-type': 'application/json'}
 
-            r = requests.get("{0}//vdc/alerts/latest".format(self.authentication.url),
-                             headers=headers, verify=False)
+            # Setup parameters - WE ONLY TAKE ALERTS THAT HAVE NOT BEEN ACKNOWLEDGED
+            if marker:
+                params_dict = {'acknowledged': False}
+                params_dict["marker"] = marker
+            else:
+                params_dict = {'acknowledged': False}
+
+            # Call API
+            r = requests.get("{0}//vdc/alerts".format(self.authentication.url),
+                             headers=headers, verify=False, params=params_dict)
 
             if r.status_code == requests.codes.ok:
-                self.logger.debug('ECSManagementAPI::ecs_collect_alert_data()::/vdc/alerts/latest call returned '
+                self.logger.debug('ECSManagementAPI::ecs_collect_alert_data()::/vdc/alerts call returned '
                                   'with a 200 status code.  Text is: ' + r.text)
 
                 # Create a unique temp file and store the XML to it for processing
@@ -117,12 +126,48 @@ class ECSManagementAPI(object):
                         raise ECSException("The ECS Data Collection Module was unable to re-authenticate.")
                         break
                 else:
-                    self.logger.error('ECSManagementAPI::ecs_collect_alert_data()::/vdc/alerts/latest call failed '
+                    self.logger.error('ECSManagementAPI::ecs_collect_alert_data()::/vdc/alerts call failed '
                                       'with a status code of ' + str(r.status_code))
                     self.response_xml_file = None
                     break
 
         return self.response_xml_file
+
+    def ecs_acknowledge_alert(self, alert_id):
+
+        while True:
+            # Perform ECS Dashboard Alert Acknowledge API Call
+            headers = {'X-SDS-AUTH-TOKEN': "'{0}'".format(self.authentication.token),
+                       'content-type': 'application/json'}
+
+            r = requests.put("{0}//vdc/alerts/{1}/acknowledgment".format(self.authentication.url, alert_id),
+                             headers=headers, verify=False)
+
+            if r.status_code == requests.codes.ok:
+                self.logger.debug('ECSManagementAPI::ecs_acknowledge_alert()::/vdc/alerts/acknowledgment call returned '
+                                  'with a 200 status code.  Text is: ' + r.text)
+
+                alert_acknowledged = True
+                break
+            else:
+                if r.status_code == self.ecs_authentication_failure:
+                    # Attempt to re-authenticate
+                    self.authentication.token = None
+                    self.authentication.connect()
+
+                    if self.authentication.token is None:
+                        self.logger.error('ECSManagementAPI::ecs_collect_alert_data()::Token Expired.  Unable '
+                                          'to re-authenticate to ECS as configured.  Please validate and try again.')
+                        alert_acknowledged = False
+                        raise ECSException("The ECS Data Collection Module was unable to re-authenticate.")
+
+                else:
+                    self.logger.error('ECSManagementAPI::ecs_collect_alert_data()::/vdc/alerts/latest call failed '
+                                      'with a status code of ' + str(r.status_code))
+                    alert_acknowledged = False
+                    break
+
+        return alert_acknowledged
 
     def get_ecs_detail_data(self, field, metric_list=[], metric_values={}):
         # Valid 'metric_list' is a list of dictionary items

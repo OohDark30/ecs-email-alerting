@@ -28,7 +28,7 @@ class SQLLiteUtility(object):
             """
             sqllite_db = sqlite3.connect(name + '.db')
 
-            self.logger.info(MODULE_NAME + '::open_sqllite_db()::Database ' + name + ' opened.')
+            self.logger.debug(MODULE_NAME + '::open_sqllite_db()::Database ' + name + ' opened.')
             return sqllite_db
 
         except Exception as e:

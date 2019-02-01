@@ -2,7 +2,8 @@
   "BASE": {
     "logging_level": "info",
     "datastore": "sqllite",
-    "email_delivery": "smtp"
+    "email_delivery": "smtp",
+    "acknowledge_alerts_after_notification": "no"
   },
   "ECS_CONNECTION": [ {
     "protocol": "https",
@@ -11,7 +12,8 @@
     "user": "root",
     "password": "abcdefg"
   }],
-  "ECS_ALERT_SYMPTOM_CODES": ["", ""],
+  "ECS_ALERT_SEVERITY_FILTER": [],
+  "ECS_ALERT_SYMPTOM_CODES": [],
   "SQLLITE_DATABASE_CONNECTION": {
     "databasename": "ecsalerts"
   },
@@ -23,6 +25,7 @@
 	"port": "<smtp_host_port>",
     "user": "<user>",
     "password":  "<password>",
+    "authenticationrequired": "0",
     "fromemail": "from_email_address",
     "toemail": "to_email_address",
     "polling_interval_seconds": "120"
@@ -33,5 +36,9 @@
     "toemail": "<to_email_address>",
     "debuglevel": "0",
     "polling_interval_seconds": "120"
+  },
+  "SLACK": {
+   "slack_environment_variable_for_webhook_url": "SLACK_WEBHOOK_URL",
+   "polling_interval_seconds": "120"
   }
 }

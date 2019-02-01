@@ -4,7 +4,6 @@ DELL EMC ECS SendGrid Email Module.
 import http.client
 import ecssendgrid
 import sendgrid
-import os
 from sendgrid.helpers.mail import *
 import time
 
@@ -57,13 +56,12 @@ class ECSSendGridUtility(object):
                 time.sleep(1)
 
             # Grab values from row parameter
-            id = row[0]
             vdc = row[1]
-            alertid = row[2]
-            description = row[4]
-            severity = row[6]
-            symtomcode = row[7]
-            timestamp = row[8]
+            management_ip = row[2]
+            description = row[5]
+            severity = row[7]
+            symtomcode = row[8]
+            timestamp = row[9]
 
             from_email = Email(self.config.send_grid_fromemail)
             to_email = Email(self.config.send_grid_toemail)
@@ -75,11 +73,15 @@ class ECSSendGridUtility(object):
                 if severity == 'ERROR':
                     severity_text = """<font color="red">""" + severity + "</font>"
                 else:
-                    severity_text = """<font color="black">""" + severity + "</font>"
+                    if severity == 'CRITICAL':
+                        severity_text = """<font color="red">""" + severity + "</font>"
+                    else:
+                        severity_text = """<font color="black">""" + severity + "</font>"
 
             email_content = Content("text/html", "<html><body><h1>" +
                                     "Elastic Cloud Storage (ECS) Received Alert from "
                                     "Virtual Data Center: " + vdc + "</h1><br>" +
+                                    "Management IP: " + management_ip + "</h1><br>" +
                                     "Severity: " + severity_text + "<br>" +
                                     "Symptom Code : " + symtomcode + "<br>" +
                                     "Description : " + description + "<br>" +
@@ -87,12 +89,7 @@ class ECSSendGridUtility(object):
                                     "</body></html>")
 
             mail = Mail(from_email, subject, to_email, email_content)
-            response = self.send_grid_client.client.mail.send.post(request_body=mail.get())
-
-            # Uncomment the following 3 lines for debug purposes
-            #print(response.status_code)
-            #print(response.body)
-            #print(response.headers)
+            self.send_grid_client.client.mail.send.post(request_body=mail.get())
 
             return sent
 
