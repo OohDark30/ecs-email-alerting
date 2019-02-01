@@ -2,7 +2,7 @@
   "BASE": {
     "logging_level": "info",
     "datastore": "sqllite",
-    "email_delivery": "smtp",
+    "alert_delivery": "smtp",
     "acknowledge_alerts_after_notification": "no"
   },
   "ECS_CONNECTION": [ {
