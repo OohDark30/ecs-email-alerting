@@ -6,6 +6,7 @@ import sqlite3
 # Constants
 MODULE_NAME = "sqllite"                  # Module Name
 
+
 class SQLLiteException(Exception):
     pass
 
@@ -35,4 +36,5 @@ class SQLLiteUtility(object):
             self.logger.error(MODULE_NAME + '::open_sqllite_db()::The following '
                               'unhandled exception occurred: ' + e.message)
             return None
+
 
